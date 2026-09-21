@@ -127,3 +127,40 @@ pub fn windows_accent_hex() -> Option<String> {
 pub fn windows_accent_hex() -> Option<String> {
     None
 }
+
+// ── Battery (radial widgets, 2026-09-21) ─────────────────────────────────────
+
+/// Battery state for the radial wheel's battery pill:
+/// `{ present, percent (0..100 | null), charging }`. `present` is false on
+/// desktops (BatteryFlag 128 = no system battery) and when Windows reports the
+/// level as unknown (255), so the pill can be skipped instead of showing "?".
+#[cfg(windows)]
+pub fn battery_status() -> Value {
+    use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    let mut status = SYSTEM_POWER_STATUS {
+        ACLineStatus: 0,
+        BatteryFlag: 0,
+        BatteryLifePercent: 0,
+        SystemStatusFlag: 0,
+        BatteryLifeTime: 0,
+        BatteryFullLifeTime: 0,
+    };
+    let ok = unsafe { GetSystemPowerStatus(&mut status) } != 0;
+    if !ok {
+        return serde_json::json!({ "present": false, "percent": Value::Null, "charging": false });
+    }
+    let no_battery = status.BatteryFlag & 128 != 0 || status.BatteryFlag == 255;
+    let percent_known = status.BatteryLifePercent <= 100;
+    let present = !no_battery && percent_known;
+    let charging = status.BatteryFlag & 8 != 0 || (present && status.ACLineStatus == 1);
+    serde_json::json!({
+        "present": present,
+        "percent": if present { Value::from(status.BatteryLifePercent) } else { Value::Null },
+        "charging": charging,
+    })
+}
+
+#[cfg(not(windows))]
+pub fn battery_status() -> Value {
+    serde_json::json!({ "present": false, "percent": Value::Null, "charging": false })
+}

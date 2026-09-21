@@ -108,6 +108,10 @@ windows-sys = { version = "0.59", features = [
     "Win32_Media",
     "Win32_Security_Cryptography",
     "Win32_System_Shutdown",
+    # Radial widgets (2026-09-21): battery pill reads GetSystemPowerStatus,
+    # RAM pill reads GlobalMemoryStatusEx (CPU uses GetSystemTimes, Threading).
+    "Win32_System_Power",
+    "Win32_System_SystemInformation",
     # v0.8.4 legacy source_app icon resolver: enumerate running processes to
     # find a currently-live PID whose exe filename matches the requested
     # source_app name. Cheapest fallback when App Paths registry lookup

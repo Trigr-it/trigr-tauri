@@ -3443,6 +3443,9 @@ fn build_radial_menu_data() -> Value {
             .unwrap_or(true)
     };
     let mut radial_items = items_for_profile(&active_profile);
+    // Name of the profile whose wheel is actually shown (the Profile widget
+    // pill); flips to the global profile on the empty-wheel fallback below.
+    let mut wheel_profile = active_profile.clone();
     // App-specific profile with nothing on its wheel: show the global
     // profile's wheel instead of an empty one (user ask, 2026-09-16). Firing
     // is by storage key against the full assignment map, so the global
@@ -3457,6 +3460,7 @@ fn build_radial_menu_data() -> Value {
                 active_profile, global_profile
             );
             radial_items = fallback;
+            wheel_profile = global_profile.clone();
         }
     }
     let resolve_item = |item: &Value| -> Option<Value> {
@@ -3597,11 +3601,27 @@ fn build_radial_menu_data() -> Value {
         .and_then(|s| s.rsplit('+').next())
         .unwrap_or("")
         .to_string();
+    // Radial widgets (Pro, 2026-09-21): the configured pill list (clock /
+    // date / battery, slots + options) straight from config; the overlay
+    // formats time and date itself, Rust only samples the battery at show.
+    // Free tier gets an empty list here, so a shared config from a Pro
+    // machine never lights the pills on a Free one.
+    let widgets = if crate::licence::is_pro() {
+        cfg.get("radialWidgets")
+            .filter(|v| v.is_array())
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([]))
+    } else {
+        serde_json::json!([])
+    };
     let payload = serde_json::json!({
         "items": resolved_items,
         "theme": theme,
         "holdToSelect": hold_to_select,
         "holdKey": hold_key,
+        "widgets": widgets,
+        "facts": radial_widget_facts(),
+        "profile": wheel_profile,
     });
     payload
 }
@@ -6039,6 +6059,98 @@ fn get_windows_accent() -> Option<String> {
     appearance::windows_accent_hex()
 }
 
+/// Machine facts for the radial widget pills: battery, foreground app,
+/// master volume, lock keys, CPU and RAM. Same object rides in the
+/// `radial-menu-data` payload as `facts`; the overlay and the editor poll this
+/// command while a live pill (CPU / RAM / volume / locks) is showing.
+#[tauri::command]
+fn get_radial_widget_facts() -> Value {
+    radial_widget_facts()
+}
+
+/// CPU usage is a delta between two GetSystemTimes samples, so the first call
+/// (or a call after a long gap) reports the average since the previous one.
+#[cfg(windows)]
+static CPU_SAMPLE: std::sync::Mutex<Option<(u64, u64)>> = std::sync::Mutex::new(None);
+
+#[cfg(windows)]
+fn radial_widget_facts() -> Value {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    use windows_sys::Win32::System::Threading::GetSystemTimes;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CAPITAL, VK_NUMLOCK};
+
+    // Foreground app = the window the wheel was opened over (never the
+    // overlay itself); the watcher's last name is the fallback.
+    let target = RADIAL_MENU_TARGET_HWND.load(std::sync::atomic::Ordering::SeqCst);
+    let app = (target != 0)
+        .then(|| foreground::proc_name_for_hwnd(target))
+        .flatten()
+        .or_else(|| {
+            let s = foreground::get_current_fg_proc();
+            (!s.is_empty()).then_some(s)
+        })
+        .map(|s| s.trim_end_matches(".exe").to_string());
+
+    let volume = volume::get_master_volume_scalar().map(|v| (v * 100.0).round() as u32);
+
+    let caps_lock = unsafe { GetKeyState(VK_CAPITAL as i32) } & 1 != 0;
+    let num_lock = unsafe { GetKeyState(VK_NUMLOCK as i32) } & 1 != 0;
+
+    let ft = |f: FILETIME| ((f.dwHighDateTime as u64) << 32) | f.dwLowDateTime as u64;
+    let mut idle = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+    let mut kernel = idle;
+    let mut user = idle;
+    let cpu = if unsafe { GetSystemTimes(&mut idle, &mut kernel, &mut user) } != 0 {
+        let idle_t = ft(idle);
+        let total_t = ft(kernel) + ft(user); // kernel includes idle
+        let mut guard = CPU_SAMPLE.lock().unwrap_or_else(|p| p.into_inner());
+        let pct = guard.and_then(|(prev_idle, prev_total)| {
+            let dt = total_t.saturating_sub(prev_total);
+            (dt > 0).then(|| {
+                let di = idle_t.saturating_sub(prev_idle);
+                ((1.0 - di as f64 / dt as f64) * 100.0).round().clamp(0.0, 100.0) as u32
+            })
+        });
+        *guard = Some((idle_t, total_t));
+        pct
+    } else {
+        None
+    };
+
+    let mut mem: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
+    mem.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+    let (ram_pct, ram_used_gb, ram_total_gb) = if unsafe { GlobalMemoryStatusEx(&mut mem) } != 0 && mem.ullTotalPhys > 0 {
+        let used = mem.ullTotalPhys - mem.ullAvailPhys;
+        let gb = |b: u64| (b as f64 / 1_073_741_824.0 * 10.0).round() / 10.0;
+        (Some(mem.dwMemoryLoad), Some(gb(used)), Some(gb(mem.ullTotalPhys)))
+    } else {
+        (None, None, None)
+    };
+
+    serde_json::json!({
+        "battery": appearance::battery_status(),
+        "app": app,
+        "volume": volume,
+        "capsLock": caps_lock,
+        "numLock": num_lock,
+        "cpu": cpu,
+        "ramPct": ram_pct,
+        "ramUsedGb": ram_used_gb,
+        "ramTotalGb": ram_total_gb,
+    })
+}
+
+#[cfg(not(windows))]
+fn radial_widget_facts() -> Value {
+    serde_json::json!({
+        "battery": appearance::battery_status(),
+        "app": Value::Null, "volume": Value::Null,
+        "capsLock": false, "numLock": false,
+        "cpu": Value::Null, "ramPct": Value::Null, "ramUsedGb": Value::Null, "ramTotalGb": Value::Null,
+    })
+}
+
 /// Per-machine interface scale (WebView2 zoom on main + Settings only).
 #[tauri::command]
 fn get_ui_scale() -> f64 {
@@ -7850,6 +7962,7 @@ pub fn run() {
             get_radial_layout_id,
             set_radial_layout_id,
             get_windows_accent,
+            get_radial_widget_facts,
             get_ui_scale,
             set_ui_scale,
             close_clipboard_overlay,

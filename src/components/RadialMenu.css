@@ -28,8 +28,14 @@
      Mirrors global.css token — must be redeclared here because the radial
      window doesn't import global.css (would break window transparency). */
   --accent-surface: #3d2e10;
-  /* Radial wheel idle wedge + base donut fill (dark surface in dark theme). */
+  /* Radial wheel idle wedge fill (dark surface in dark theme). */
   --radial-wedge: #1a1a24;
+  /* Layered rings, mirrored from global.css (2026-09-21). */
+  --radial-plate: #13131a;
+  --radial-hub: #0d0d11;
+  --radial-hairline: rgba(255, 255, 255, 0.09);
+  --radial-rim: rgba(255, 255, 255, 0.06);
+  --black: #000000;
   /* Mirrored from global.css (token sweep 2026-08-26) */
   --white: #ffffff;
   /* Scale tokens mirrored from global.css (token sweep Phase C) */
@@ -38,6 +44,7 @@
   --space-4: 10px;
   --text-2xs: 9px;
   --text-3xs: 8px;
+  --text-xs: 10px;
   --text-display-lg: 32px;
   --text-display-md: 22px;
   --text-md: 12px;
@@ -45,6 +52,7 @@
   --text-xl: 14px;
   --tracking-normal: 0.04em;
   --tracking-tight: 0.02em;
+  --tracking-wide: 0.08em; /* widget pill captions */
 }
 
 [data-theme="light"] {
@@ -63,6 +71,10 @@
   --backdrop-blur:  blur(20px) saturate(130%);
   --accent-surface: #f5e0b0;
   --radial-wedge:   #ffffff;
+  --radial-plate:   #ebebf0;
+  --radial-hub:     #f0f0f5;
+  --radial-hairline: rgba(0, 0, 0, 0.10);
+  --radial-rim:     rgba(0, 0, 0, 0.08);
 }
 /* stylelint-enable color-no-hex */
 

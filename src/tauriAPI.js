@@ -562,6 +562,9 @@ window.electronAPI = {
   // Appearance: Windows accent colour ("#rrggbb" | null) and the per-machine
   // interface scale (0.9..1.25, WebView2 zoom on main + Settings only).
   getWindowsAccent:       ()      => invoke('get_windows_accent'),
+  // Radial widgets: machine facts (battery, app, volume, locks, CPU, RAM)
+  // for the pills; polled while a live pill is showing.
+  getRadialWidgetFacts:   ()      => invoke('get_radial_widget_facts'),
   getUiScale:             ()      => invoke('get_ui_scale'),
   setUiScale:             (scale) => invoke('set_ui_scale', { scale }),
   closeRadialMenu:        ()      => invoke('close_radial_menu'),

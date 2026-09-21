@@ -1,7 +1,12 @@
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove } from '@dnd-kit/sortable';
+import {
+  Clock, CalendarDays, CalendarRange, BatteryMedium, BatteryLow, BatteryCharging,
+  Cpu, MemoryStick, Volume2, VolumeX, Keyboard, AppWindow, Layers,
+} from 'lucide-react';
 import { isLucideIcon, getLucideIconName, isSimpleIcon, getSimpleIconSlug, isCustomIcon, getCustomIconData, loadIconRenderers, getIconRenderers } from './iconUtils';
+import { PILL, MAX_TIER, pillGeometry, pillTextWidths, layoutWordsOnArc, tierBases, normAngle } from './radialWidgets';
 import './RadialWheel.css';
 
 // ── Geometry constants ─────────────────────────────────────────────────────────
@@ -16,6 +21,46 @@ const MAX_SLOTS = 8;
 // positioning still uses the base outerR so all icons sit at the same radial
 // distance — the extruded portion reads as empty headroom above the icon.
 const FOLDER_EXTRUDE_PX = 10;
+// Layered rings (radial polish, 2026-09-21): a plate disc sits behind the
+// main wedge ring and a hub disc fills the centre hole, each one tone apart
+// from the wedges. HUB_GAP is the sliver of plate between the wedges' inner
+// edge and the hub; PLATE_PAD is the rim visible past the wedges' outer edge
+// and matches it so the ring sits centred on the disc. The rim is far
+// narrower than the folder extrusion (an active folder pokes past it, which
+// reads as the pop-out it is) and the plate never grows under the outer
+// ring: expanded children float outside it.
+const HUB_GAP = 3;
+const PLATE_PAD = HUB_GAP;
+// Widget pills (Pro, 2026-09-21): pills hugging the plate rim, each centred
+// on its own angle (radialWidgets.js: geometry + clearance rules shared with
+// the editor). Body = a stroked arc (hairline outline under a plate-coloured
+// body, round caps). Content = lucide glyph at the left end of the run +
+// text laid along the arc WORD BY WORD (radialWidgets.js layoutWordsOnArc):
+// each word is one straight, kerned block rotated to the tangent at its own
+// centre, so the words follow the curve without any glyph being placed on
+// its own. Two-row pills put the caption on the visually higher arc. Third
+// approach after glyph-by-glyph textPath (never read smooth at this radius)
+// and one straight block (broke on long labels), Rory 2026-09-21. Hidden
+// while a folder's outer ring is open.
+// Pill body shape. 'wedge' = an annular segment whose sides are radial lines
+// through the wheel centre, like the main wedges (Rory 2026-09-21 test);
+// 'capsule' = the stroked arc with round caps from the Halo reference.
+const PILL_SHAPE = 'wedge';
+const PILL_ICONS = {
+  'clock': Clock,
+  'calendar': CalendarDays,
+  'week': CalendarRange,
+  'battery': BatteryMedium,
+  'battery-low': BatteryLow,
+  'battery-charging': BatteryCharging,
+  'cpu': Cpu,
+  'ram': MemoryStick,
+  'volume': Volume2,
+  'volume-x': VolumeX,
+  'keyboard': Keyboard,
+  'app': AppWindow,
+  'profile': Layers,
+};
 
 // ── Type icons (matches SearchOverlay TYPE_META) ───────────────────────────────
 
@@ -103,7 +148,9 @@ export default function RadialWheel({
   onBackgroundClick,
   onReorder,
   onReorderChildren,
-  scale = 1,
+  scale = 1,                 // sizes the container (viewBox scaling), NEVER a CSS transform: a
+                             // post-render scale() rasterises the SVG and re-scales the bitmap,
+                             // which turns text on the pill arcs fuzzy-jagged at 125 %+ DPI
   externalDnd = false,       // true = parent owns DndContext, skip internal wrapper
   onItemContextMenu,         // (item, index, event) — right-click on filled inner wedge
   onChildContextMenu,        // (folderId, child, childIndex, event) — right-click on filled outer wedge
@@ -114,8 +161,14 @@ export default function RadialWheel({
   selectedIndex = -1,        // inner wedge index currently selected for editing
   innerRadius,               // override INNER_R (editor uses smaller value to reduce centre gap)
   outerRadius,               // override OUTER_R (editor shifts ring inward)
+  pills = [],                // widget pills [{ id, slot, icon, label }] (radialWidgets.js resolvePills)
+  onPillPointerDown,         // editor: (pill, event) — start dragging a pill to another slot
+  onPillHandlePointerDown,   // editor: (pill, centre {x,y} in viewBox units, event) — end-cap drag = resize
+  draggingPillId = null,     // editor: pill currently being dragged (styled)
 }) {
   const isEditor = mode === 'editor';
+  // Widget pill rings: inner radius of ring 0 and ring 1 for this pill set.
+  const pillBases = tierBases(pills);
   const effectiveInnerR = innerRadius != null ? innerRadius : INNER_R;
   const effectiveOuterR = outerRadius != null ? outerRadius : OUTER_R;
   // Outer ring (folder children) radii — starts just outside inner ring, same wedge height
@@ -282,9 +335,10 @@ export default function RadialWheel({
   // ── Render a single wedge ────────────────────────────────────────────
   // Hairline angular gap between adjacent wedges. A base donut fills the
   // entire ring outline behind the wedges; what shows through the gap IS the
-  // separator. No more per-wedge gold outlines — the ring reads as one
-  // continuous shape with thin hairline dividers, matching the inspo.
-  const WEDGE_GAP = 0.35;
+  // separator. The donut is painted in --radial-hairline (a low-contrast line
+  // colour), so the gap reads as a ~1px divider at the outer edge and tapers
+  // toward the hub, matching the Halo reference. No per-wedge outlines.
+  const WEDGE_GAP = 0.4;
   const RADIAL_GAP = 0;
 
   function renderWedge(w, isOuter = false) {
@@ -484,8 +538,11 @@ export default function RadialWheel({
               >{meta.icon}</text>
             )}
             </g>
-            {/* Number key badge — editor only */}
-            {isEditor && !isFolder && !isOuter && (
+            {/* Number key badge — editor only, and only on a wedge that has
+                no icon or logo of its own (the fallback type glyph needs the
+                extra identification; a real icon does not, Rory 2026-09-21). */}
+            {isEditor && !isFolder && !isOuter
+              && !item.appIcon && !isCustomIcon(item.icon) && !isSimpleIcon(item.icon) && !isLucideIcon(item.icon) && (
               <text
                 x={numX} y={numY}
                 className="rw-wedge-num"
@@ -522,9 +579,17 @@ export default function RadialWheel({
           <stop offset="8%"  style={{ stopColor: 'var(--accent-bright)' }} stopOpacity="1" />
           <stop offset="100%" style={{ stopColor: 'var(--accent)' }} stopOpacity="1" />
         </linearGradient>
-        <filter id="rw-ring-shadow" x="-25%" y="-25%" width="150%" height="150%">
-          <feDropShadow dx="0" dy="6" stdDeviation="8" floodOpacity="0.35" />
+        {/* Soft shadow under the plate: wide and diffuse so the disc lifts
+            off the desktop instead of casting a hard edge. Opacity lives in
+            CSS (.rw-plate-shadow) so the light half can run it lighter. The
+            filter region is oversized to fit the blur radius. */}
+        <filter id="rw-plate-shadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="10" stdDeviation="14" className="rw-plate-shadow" />
         </filter>
+        {/* Widget pills carry no shadow (side by side, one pill's shadow fell
+            on its neighbour). If one is ever re-added it needs an explicit
+            user-space filter region: a pill is a thin arc whose geometry box
+            is a few px tall, and a percentage region clipped the stroke. */}
         {/* Per-wedge glow used on hover — matches the button's outer drop
             shadow (0 2px 10px rgba(--accent-rgb, 0.5)). */}
         <filter id="rw-wedge-glow" x="-30%" y="-30%" width="160%" height="160%">
@@ -543,11 +608,29 @@ export default function RadialWheel({
         }}
       />
 
-      {/* Base donut sits BEHIND every wedge. Filled gold — the hairline
-          WEDGE_GAP between wedges shows this through as the separator colour,
-          so the ring reads as one continuous shape with thin gold dividers
-          instead of eight independently outlined tiles. Single drop shadow
-          here covers the whole ring at once. */}
+      {/* Layered rings. Plate disc (one tone below the wedges, soft shadow,
+          hairline rim) behind the main ring only; the expanded outer ring
+          sits outside it. Hub disc (one tone below again, hairline edge)
+          fills the centre hole and carries the hover label. Live mode
+          animates both with the same expand-from-centre as the wedges. */}
+      {(() => {
+        const plateR = effectiveOuterR + PLATE_PAD;
+        const hubR = Math.max(effectiveInnerR - HUB_GAP, 8);
+        const plateStyle = !isEditor
+          ? { animation: 'wedge-expand 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.05) both' }
+          : undefined;
+        return (
+          <g className="rw-rings" style={plateStyle}>
+            <circle cx={CX} cy={CY} r={plateR} className="rw-plate" pointerEvents="none" />
+            <circle cx={CX} cy={CY} r={hubR} className="rw-hub" pointerEvents="none" />
+          </g>
+        );
+      })()}
+
+      {/* Base donut sits BEHIND every wedge and is painted in the hairline
+          colour: the WEDGE_GAP between wedges shows it through as the
+          separator, so the ring reads as one continuous shape with thin
+          dividers instead of eight independently outlined tiles. */}
       {(() => {
         const oR = effectiveOuterR;
         const iR = effectiveInnerR;
@@ -643,6 +726,226 @@ export default function RadialWheel({
           {outerWedges.map(w => renderWedge(w, true))}
         </g>
       )}
+
+      {/* Widget pills around the plate. Unmounted while a folder is open:
+          the outer ring grows into their band. Text runs left-to-right and
+          upright in both hemispheres: the path is drawn clockwise across the
+          top and counter-clockwise across the bottom, so "up" for the glyphs
+          is always screen-up. */}
+      {pills.length > 0 && outerWedges.length === 0 && (
+        <g className="rw-pills" pointerEvents={isEditor ? 'auto' : 'none'}>
+          {pills.map((p) => {
+            if (!p.label || typeof p.angle !== 'number') return null;
+            // pathHalfDeg = the stroked path; the round caps extend capDeg
+            // beyond each end (halfDeg = pathHalfDeg + capDeg is the full
+            // extent the clearance rules use).
+            const { r, pathHalfDeg, capDeg, tall, h, iconLen } = pillGeometry(p, pillBases[p.tier || 0]);
+            const halfDeg = pathHalfDeg;
+            const angle = normAngle(p.angle);
+            const bottom = angle > 0 && angle < 180;
+            const sweep = bottom ? 0 : 1;
+            const a0 = bottom ? angle + halfDeg : angle - halfDeg;
+            const a1 = bottom ? angle - halfDeg : angle + halfDeg;
+            const arc = (rad) => {
+              const [sx, sy] = polarToXY(CX, CY, rad, a0);
+              const [ex, ey] = polarToXY(CX, CY, rad, a1);
+              return `M ${sx} ${sy} A ${rad} ${rad} 0 0 ${sweep} ${ex} ${ey}`;
+            };
+            const [x0, y0] = polarToXY(CX, CY, r, a0);
+            const [x1, y1] = polarToXY(CX, CY, r, a1);
+            const d = arc(r);
+            const Icon = p.icon ? (PILL_ICONS[p.icon] || Clock) : null;
+            // Word-by-word along the arc (Rory 2026-09-21, third approach):
+            // each word is a straight, kerned block rotated to the tangent at
+            // its own centre; the words follow the curve. Rows are centred on
+            // the pill's angle (the icon does NOT shift them: it hangs off the
+            // run's left end and the body is widened by the icon on both
+            // sides in pillGeometry). Reading direction is increasing angle
+            // across the top and decreasing across the bottom.
+            const { textW, captionW } = pillTextWidths(p);
+            const rowW = Math.max(textW, captionW);
+            // Compact: icon + text centred as one group (text shifts half an
+            // icon right). Otherwise text on the pill centre, body balanced
+            // by the icon on both sides. Mirrors pillGeometry's contentLen.
+            const grouped = !!p.compact && iconLen > 0;
+            const contentW = grouped ? iconLen + rowW : rowW + 2 * iconLen;
+            const dir = bottom ? -1 : 1;
+            const pxToDeg = (px) => (px / r) * 180 / Math.PI;
+            const textCentreAngle = grouped ? angle + dir * pxToDeg(iconLen / 2) : angle;
+            const rowOff = PILL.ROW_OFFSET;
+            // Caption row is the visually higher arc: outer radius across
+            // the top, inner across the bottom (glyph "up" is screen-up).
+            const captionR = bottom ? r - rowOff : r + rowOff;
+            const valueR = bottom ? r + rowOff : r - rowOff;
+            const captionText = tall ? String(p.caption).toLocaleUpperCase() : '';
+            const valueWords = layoutWordsOnArc(p.label, tall ? valueR : r, textCentreAngle, dir, false);
+            const captionWords = tall ? layoutWordsOnArc(captionText, captionR, textCentreAngle, dir, true) : [];
+            const tangentRot = (a) => (bottom ? a - 90 : a + 90);
+            // Icon: just left of the text run, at the pill's centre radius.
+            const iconAngle = textCentreAngle - dir * pxToDeg(rowW / 2 + PILL.ICON_GAP + PILL.ICON / 2);
+            const [iconX, iconY] = polarToXY(CX, CY, r, iconAngle);
+            const isDragging = draggingPillId === p.id;
+            return (
+              <g
+                key={p.id}
+                className={`rw-pill${isDragging ? ' rw-pill--dragging' : ''}${tall ? ' rw-pill--tall' : ''}`}
+                onPointerDown={isEditor && onPillPointerDown ? (e) => onPillPointerDown(p, e) : undefined}
+              >
+                {PILL_SHAPE === 'wedge' ? (
+                  // Full extent (path span + what the round caps used to add)
+                  // so the content padding and the clearance maths are the
+                  // same for both shapes.
+                  <path
+                    d={wedgePath(CX, CY, r - h / 2, r + h / 2, angle - (halfDeg + capDeg), angle + (halfDeg + capDeg))}
+                    className="rw-pill-wedge"
+                  />
+                ) : (
+                  <>
+                    <path d={d} className="rw-pill-outline" strokeWidth={h + 2} />
+                    <path d={d} className="rw-pill-body" strokeWidth={h} />
+                  </>
+                )}
+                {Icon && (
+                  <g transform={`translate(${iconX} ${iconY}) rotate(${tangentRot(iconAngle)})`} pointerEvents="none">
+                    <Icon
+                      x={-PILL.ICON / 2} y={-PILL.ICON / 2}
+                      width={PILL.ICON} height={PILL.ICON}
+                      strokeWidth={2.2}
+                      className="rw-pill-icon"
+                      aria-hidden="true"
+                    />
+                  </g>
+                )}
+                {captionWords.map((wd, i) => {
+                  const [wx, wy] = polarToXY(CX, CY, captionR, wd.angle);
+                  return (
+                    <text
+                      key={`c${i}`}
+                      className="rw-pill-caption"
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      transform={`translate(${wx} ${wy}) rotate(${tangentRot(wd.angle)})`}
+                      pointerEvents="none"
+                    >{wd.text}</text>
+                  );
+                })}
+                {valueWords.map((wd, i) => {
+                  const [wx, wy] = polarToXY(CX, CY, tall ? valueR : r, wd.angle);
+                  return (
+                    <text
+                      key={`v${i}`}
+                      className="rw-pill-text"
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      transform={`translate(${wx} ${wy}) rotate(${tangentRot(wd.angle)})`}
+                      pointerEvents="none"
+                    >{wd.text}</text>
+                  );
+                })}
+                {/* Resize handles (editor). End caps: drag along the arc for
+                    full <-> compact; a thin accent trim hugs each cap on
+                    hover. Outside edge: drag away from the wheel for two
+                    rows, toward it for one; a trim runs along that edge on
+                    hover. RadialEditorView owns the pointer maths; it gets
+                    the pill's centre and which handle was grabbed. */}
+                {isEditor && onPillHandlePointerDown && (() => {
+                  const [mx, my] = polarToXY(CX, CY, r, angle);
+                  const capR = h / 2;
+                  // Outward unit vector at each cap (along the arc, away
+                  // from the body), as a polar heading in degrees.
+                  const capTrim = (ex, ey, theta, outwardSign) => {
+                    const heading = theta + 90 * outwardSign; // tangent direction, +90 = increasing angle
+                    const R = capR + 1.5;
+                    const [p1x, p1y] = [ex + R * Math.cos(deg2rad(heading - 90)), ey + R * Math.sin(deg2rad(heading - 90))];
+                    const [p2x, p2y] = [ex + R * Math.cos(deg2rad(heading + 90)), ey + R * Math.sin(deg2rad(heading + 90))];
+                    return `M ${p1x} ${p1y} A ${R} ${R} 0 0 1 ${p2x} ${p2y}`;
+                  };
+                  const sign0 = bottom ? 1 : -1; // cap at a0 points toward decreasing angle on top pills
+                  const sign1 = -sign0;
+                  const edgeR = r + capR;          // outside edge (away from the wheel)
+                  const edgeInset = Math.min(halfDeg, capDeg * (r / edgeR));
+                  const e0 = bottom ? a0 - edgeInset : a0 + edgeInset;
+                  const e1 = bottom ? a1 + edgeInset : a1 - edgeInset;
+                  const edgePath = (rad) => {
+                    const [sx, sy] = polarToXY(CX, CY, rad, e0);
+                    const [ex, ey] = polarToXY(CX, CY, rad, e1);
+                    return `M ${sx} ${sy} A ${rad} ${rad} 0 0 ${sweep} ${ex} ${ey}`;
+                  };
+                  const down = (mode) => (e) => onPillHandlePointerDown(p, { x: mx, y: my }, e, mode);
+                  if (PILL_SHAPE === 'wedge') {
+                    // Wedge: the trims are the two radial sides and the
+                    // outer arc, spanning the full extent.
+                    const w0 = angle - (halfDeg + capDeg);
+                    const w1 = angle + (halfDeg + capDeg);
+                    const side = (a) => {
+                      const [ix0, iy0] = polarToXY(CX, CY, r - capR - 1.5, a);
+                      const [ox0, oy0] = polarToXY(CX, CY, r + capR + 1.5, a);
+                      return `M ${ix0} ${iy0} L ${ox0} ${oy0}`;
+                    };
+                    const outer = (rad) => {
+                      const [sx, sy] = polarToXY(CX, CY, rad, w0);
+                      const [ex, ey] = polarToXY(CX, CY, rad, w1);
+                      return `M ${sx} ${sy} A ${rad} ${rad} 0 0 1 ${ex} ${ey}`;
+                    };
+                    const [s0x, s0y] = polarToXY(CX, CY, r, w0);
+                    const [s1x, s1y] = polarToXY(CX, CY, r, w1);
+                    return (
+                      <>
+                        <path d={side(w0)} className="rw-pill-cap-trim" />
+                        <path d={side(w1)} className="rw-pill-cap-trim" />
+                        <path d={outer(edgeR + 1.5)} className="rw-pill-edge-trim" />
+                        <circle cx={s0x} cy={s0y} r={capR} className="rw-pill-handle rw-pill-handle--cap" onPointerDown={down('width')} />
+                        <circle cx={s1x} cy={s1y} r={capR} className="rw-pill-handle rw-pill-handle--cap" onPointerDown={down('width')} />
+                        <path d={outer(edgeR - 2)} className="rw-pill-handle rw-pill-handle--edge" strokeWidth={10} onPointerDown={down('height')} />
+                      </>
+                    );
+                  }
+                  return (
+                    <>
+                      <path d={capTrim(x0, y0, a0, sign0)} className="rw-pill-cap-trim" />
+                      <path d={capTrim(x1, y1, a1, sign1)} className="rw-pill-cap-trim" />
+                      <path d={edgePath(edgeR + 1.5)} className="rw-pill-edge-trim" />
+                      <circle cx={x0} cy={y0} r={capR} className="rw-pill-handle rw-pill-handle--cap" onPointerDown={down('width')} />
+                      <circle cx={x1} cy={y1} r={capR} className="rw-pill-handle rw-pill-handle--cap" onPointerDown={down('width')} />
+                      <path d={edgePath(edgeR - 2)} className="rw-pill-handle rw-pill-handle--edge" strokeWidth={10} onPointerDown={down('height')} />
+                    </>
+                  );
+                })()}
+              </g>
+            );
+          })}
+          {/* Drop zones while a pill is being dragged (editor): one faint
+              dashed band per ring at the dragged pill's height, the ring it
+              currently sits in drawn stronger, so it is obvious a pill can
+              be stacked above the others. */}
+          {isEditor && draggingPillId && (() => {
+            const dragged = pills.find(p => p.id === draggingPillId);
+            if (!dragged) return null;
+            const h = dragged.caption ? PILL.H_TALL : PILL.H;
+            const donut = (inner, outer) => [
+              `M ${CX + outer} ${CY}`,
+              `A ${outer} ${outer} 0 1 1 ${CX - outer} ${CY}`,
+              `A ${outer} ${outer} 0 1 1 ${CX + outer} ${CY}`,
+              `M ${CX + inner} ${CY}`,
+              `A ${inner} ${inner} 0 1 0 ${CX - inner} ${CY}`,
+              `A ${inner} ${inner} 0 1 0 ${CX + inner} ${CY}`,
+              'Z',
+            ].join(' ');
+            return (
+              <g className="rw-pill-drop-zones" pointerEvents="none">
+                {Array.from({ length: MAX_TIER + 1 }, (_, t) => (
+                  <path
+                    key={t}
+                    d={donut(pillBases[t], pillBases[t] + h)}
+                    fillRule="evenodd"
+                    className={`rw-pill-drop-band${(dragged.tier || 0) === t ? ' is-active' : ''}`}
+                  />
+                ))}
+              </g>
+            );
+          })()}
+        </g>
+      )}
     </svg>
   );
 
@@ -651,7 +954,7 @@ export default function RadialWheel({
     return (
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <SortableContext items={[...innerSortableIds, ...outerSortableIds]}>
-          <div className="rw-container" style={scale !== 1 ? { transform: `scale(${scale})`, transformOrigin: 'center center' } : undefined}>
+          <div className="rw-container" style={scale !== 1 ? { width: Math.round(525 * scale), height: Math.round(525 * scale) } : undefined}>
             {svgContent}
           </div>
         </SortableContext>
@@ -660,7 +963,7 @@ export default function RadialWheel({
   }
 
   return (
-    <div className="rw-container" style={scale !== 1 ? { transform: `scale(${scale})`, transformOrigin: 'center center' } : undefined}>
+    <div className="rw-container" style={scale !== 1 ? { width: Math.round(525 * scale), height: Math.round(525 * scale) } : undefined}>
       {svgContent}
     </div>
   );

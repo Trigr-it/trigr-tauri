@@ -6,6 +6,10 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  /* Container for the narrow-panel rules at the bottom of this file: the
+     control rows stack when the PANEL is narrow (sidebar + action editor
+     eat width too), not only when the window is. */
+  container: rev-panel / inline-size;
 }
 
 /* ── Header strip ─────────────────────────────────────────────────────── */
@@ -134,6 +138,252 @@
 
 .rev-layout-chip .pro-badge {
   margin-left: var(--space-1);
+}
+
+/* ── Widget pills drawer (Pro) ────────────────────────────────────────── */
+
+/* Anchored to the panel's left edge (the profile sidebar sits just beyond
+   it), vertically centred. Collapsed = only the vertical tab shows. */
+/* Full panel height so the list of widgets can grow and scroll; the tab
+   stays vertically centred on the edge. */
+.rev-widgets-drawer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  z-index: 6;
+}
+
+.rev-widgets-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-self: stretch;
+  width: 0;
+  padding: 0;
+  opacity: 0;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border-bright);
+  box-shadow: var(--shadow-panel);
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease;
+}
+
+.rev-widgets-drawer.is-open .rev-widgets-panel {
+  width: 250px;
+  padding: var(--space-4) var(--space-5);
+  opacity: 1;
+  overflow-y: auto;
+}
+
+.rev-widgets-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Vertical tab, reads top to bottom, attached to the panel edge (or to the
+   sidebar edge while collapsed). */
+.rev-widgets-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  writing-mode: vertical-rl;
+  padding: var(--space-4) var(--space-1);
+  /* Solid gold primary-button recipe so the tab reads as the way in. */
+  background: var(--btn-primary-bg);
+  border: 1px solid var(--btn-primary-bg);
+  border-left: none;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--btn-primary-text);
+  box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.35);
+  cursor: pointer;
+  transition: background 0.08s, border-color 0.08s;
+}
+
+.rev-widgets-tab:hover,
+.rev-widgets-drawer.is-open .rev-widgets-tab {
+  background: var(--btn-primary-hover);
+  border-color: var(--btn-primary-hover);
+}
+
+/* Badge on a gold ground: ink text on a translucent dark chip. */
+.rev-widgets-tab .pro-badge {
+  writing-mode: horizontal-tb;
+  color: var(--btn-primary-text);
+  background: rgba(0, 0, 0, 0.16);
+  border-color: rgba(0, 0, 0, 0.18);
+}
+
+/* Widget groups (Date & time, Performance, Device, Context). */
+.rev-widget-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rev-widget-group + .rev-widget-group {
+  margin-top: var(--space-2);
+}
+
+.rev-widget-group-title {
+  font-family: var(--font-display);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 var(--space-1);
+}
+
+.rev-widget-input.is-invalid {
+  border-color: var(--danger);
+}
+
+/* One card per widget type: icon, name, on/off switch, then its options. */
+.rev-widget-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.rev-widget-card.is-on {
+  border-color: var(--border-accent);
+}
+
+.rev-widget-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rev-widget-card-head svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.rev-widget-card.is-on .rev-widget-card-head svg {
+  color: var(--accent-text);
+}
+
+.rev-widget-card-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Name doubles as the expand control while the widget is on. */
+.rev-widget-card-expand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rev-widget-card-expand:hover {
+  color: var(--accent-text);
+}
+
+.rev-widget-card-chevron {
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.rev-widget-card.is-open .rev-widget-card-chevron {
+  transform: rotate(180deg);
+}
+
+.rev-widget-card-hint {
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.rev-holdselect-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* "Add another clock" under the last clock row. */
+.rev-widget-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-start;
+  margin-top: calc(-1 * var(--space-1));
+  padding: var(--space-1) var(--space-2);
+  background: none;
+  border: none;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+.rev-widget-add:hover {
+  color: var(--accent-text-strong);
+}
+
+.rev-widget-input {
+  cursor: text;
+}
+
+.rev-widget-card-opts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rev-widget-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.rev-widget-field .rev-widget-select {
+  width: 150px;
+}
+
+.rev-widget-select {
+  height: 26px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.rev-widget-select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .rev-layout-menu {
@@ -524,8 +774,16 @@
   color: var(--accent);
 }
 
+/* The wheel is a 525px SVG by default. On short windows the zone shrank this
+   wrapper and the wheel spilled over the Wheel layouts bar and the legend.
+   RadialEditorView measures the zone and passes a scale; RadialWheel sizes
+   its container to that square and the SVG follows through its viewBox.
+   Never re-introduce a CSS transform scale here: WebView2 then rasterises
+   the SVG once and rescales the bitmap, which made the text on the widget
+   pill arcs fuzzy and jagged. */
 .rev-editor {
   position: relative;
+  flex: 0 0 auto;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -897,4 +1155,37 @@
   border-radius: var(--radius-lg);
   color: var(--btn-danger-text);
   font-size: var(--text-sm);
+}
+
+/* ── Narrow panel: control rows stack (text above, control below) ────────
+   Below ~720px the hint text in the header, hold-to-select and Wheel
+   layouts rows was squashed to a few words per line beside its control
+   (Rory 2026-09-21). Two rows read better than one congested one. */
+@container rev-panel (max-width: 720px) {
+  .rev-header {
+    flex-wrap: wrap;
+    row-gap: var(--space-3);
+  }
+
+  .rev-hotkey-ctrl {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .rev-holdselect-row,
+  .rev-layouts-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .rev-layouts-bar .rev-layout-switcher {
+    align-self: stretch;
+    justify-content: flex-start;
+  }
+
+  .rev-stats {
+    flex-wrap: wrap;
+    row-gap: var(--space-1);
+  }
 }

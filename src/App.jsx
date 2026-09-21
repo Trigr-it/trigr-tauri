@@ -412,6 +412,9 @@ function App() {
   const [deviceRadialLayoutId, setDeviceRadialLayoutId]     = useState('default');
   const [radialMenuHotkey, setRadialMenuHotkey]           = useState(null);
   const [radialHoldToSelect, setRadialHoldToSelect]       = useState(false);
+  // Radial widget pills (Pro): top-level `radialWidgets` list, see
+  // src/components/radialWidgets.js. Rust reads it from disk at show time.
+  const [radialWidgets, setRadialWidgets]                 = useState([]);
   const [selectedRadialSegment, setSelectedRadialSegment] = useState(null); // index or null
   const [selectedRadialChild, setSelectedRadialChild] = useState(null);   // { folderId, childIndex } or null
   const [expandedRadialFolder, setExpandedRadialFolder] = useState(null); // folder item id or null
@@ -763,6 +766,7 @@ function App() {
       const holdToSelect = config.radialHoldToSelect ?? false;
       setRadialHoldToSelect(holdToSelect);
       window.electronAPI?.setRadialHoldToSelect(holdToSelect);
+      setRadialWidgets(Array.isArray(config.radialWidgets) ? config.radialWidgets : []);
     }
     // Re-sync engine with updated config
     window.electronAPI?.updateAssignments(raw, editingProfile);
@@ -1061,6 +1065,7 @@ function App() {
           const holdToSelect = config.radialHoldToSelect ?? false;
           setRadialHoldToSelect(holdToSelect);
           window.electronAPI?.setRadialHoldToSelect(holdToSelect);
+          setRadialWidgets(Array.isArray(config.radialWidgets) ? config.radialWidgets : []);
         }
         // One-time conflict notice for pre-existing collisions (e.g., voice +
         // radial both bound to Ctrl+Alt+W from before validation was added).
@@ -4700,6 +4705,14 @@ function App() {
     window.electronAPI?.saveConfig({ radialHoldToSelect: enabled });
   }, []);
 
+  // Widget pills: narrow-patch save; the overlay reads the list from disk on
+  // every show, so no engine push is needed.
+  const handleSetRadialWidgets = useCallback((list) => {
+    const next = Array.isArray(list) ? list : [];
+    setRadialWidgets(next);
+    window.electronAPI?.saveConfig({ radialWidgets: next });
+  }, []);
+
   const handleClearRadialMenuHotkey = useCallback(() => {
     setRadialMenuHotkey(null);
     window.electronAPI?.clearRadialMenuHotkey();
@@ -6775,6 +6788,8 @@ function App() {
                 onClearRadialMenuHotkey={handleClearRadialMenuHotkey}
                 radialHoldToSelect={radialHoldToSelect}
                 onSetRadialHoldToSelect={handleSetRadialHoldToSelect}
+                radialWidgets={radialWidgets}
+                onSetRadialWidgets={handleSetRadialWidgets}
                 radialMenuItems={radialMenuItems}
                 onAddRadialMenuItem={handleAddRadialMenuItem}
                 onRemoveRadialMenuItem={handleRemoveRadialMenuItem}

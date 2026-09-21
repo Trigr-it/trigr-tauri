@@ -13,6 +13,9 @@
   width: 100%;
   height: 100%;
   display: block;
+  /* Glyphs on the pill arcs are positioned by the layout, not snapped to
+     pixel hinting, so the curved baseline stays smooth. */
+  text-rendering: geometricPrecision;
 }
 
 .rw-svg--editor {
@@ -62,15 +65,180 @@
   transition: fill 0.12s ease, d 0.12s ease;
 }
 
+/* ── Layered rings (radial polish 2026-09-21) ────────────────────────────── */
+
+/* Live mode animates the plate + hub group with the wedges' expand keyframes;
+   without this origin the scale runs from the SVG's top-left corner and the
+   disc appears to slide in instead of growing from the cursor. */
+.rw-rings {
+  transform-origin: 210px 210px;
+}
+
+/* Plate: the disc behind the wedge ring, one tone below the wedges, with a
+   hairline rim and the wheel's single soft shadow. The shadow filter is
+   declared in RadialWheel.jsx (#rw-plate-shadow); its opacity is set here so
+   the light half can run it lighter. */
+.rw-plate {
+  fill: var(--radial-plate);
+  stroke: var(--radial-rim);
+  stroke-width: 1;
+  filter: url(#rw-plate-shadow);
+}
+
+.rw-plate-shadow {
+  flood-color: var(--black);
+  flood-opacity: 0.5;
+}
+
+[data-theme="light"] .rw-plate-shadow {
+  flood-opacity: 0.18;
+}
+
+/* Hub: fills the centre hole one tone below the wedges again, hairline edge.
+   The hover label paints straight onto it (see .rw-centre-pill). */
+.rw-hub {
+  fill: var(--radial-hub);
+  stroke: var(--radial-hairline);
+  stroke-width: 1;
+}
+
+/* ── Widget pills (Pro) around the plate ─────────────────────────────────── */
+
+/* Spawn from the centre with the wedges (live mode), like every other part
+   of the wheel. */
+.rw-pills {
+  transform-origin: 210px 210px;
+}
+
+/* `backwards`, not `both`: with `both` the final keyframe's transform stays
+   applied after the entrance, and a lingering transform on the text's
+   ancestor is one of the things that makes WebView2 rasterise the SVG and
+   rescale it (fuzzy glyphs on the arcs). */
+.rw-svg:not(.rw-svg--editor) .rw-pills {
+  animation: wedge-expand 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.05) backwards;
+}
+
+.rw-pill-outline {
+  fill: none;
+  stroke: var(--radial-hairline);
+  stroke-linecap: round;
+}
+
+/* No drop shadow on pills: side by side, each one's shadow fell across its
+   neighbour (Rory 2026-09-21). The hairline outline alone lifts them. */
+.rw-pill-body {
+  fill: none;
+  stroke: var(--radial-plate);
+  stroke-linecap: round;
+}
+
+/* Drop-zone rings shown while a pill is dragged (editor). */
+.rw-pill-drop-band {
+  fill: rgba(var(--accent-rgb), 0.07);
+  stroke: rgba(var(--accent-rgb), 0.35);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.rw-pill-drop-band.is-active {
+  fill: rgba(var(--accent-rgb), 0.16);
+  stroke: rgba(var(--accent-rgb), 0.7);
+}
+
+/* Wedge-shaped pill body (PILL_SHAPE = 'wedge'): plate fill, hairline edge,
+   sharp corners like the main wedges. */
+.rw-pill-wedge {
+  fill: var(--radial-plate);
+  stroke: var(--radial-hairline);
+  stroke-width: 1;
+  stroke-linejoin: miter;
+}
+/* Editor: pills drag between slots (RadialEditorView owns the pointer maths). */
+.rw-svg--editor .rw-pill {
+  cursor: grab;
+}
+
+.rw-svg--editor .rw-pill--dragging {
+  cursor: grabbing;
+  opacity: 0.85;
+}
+
+.rw-svg--editor .rw-pill--dragging .rw-pill-outline {
+  stroke: var(--accent);
+}
+
+/* Resize handles. Hit areas are invisible (`transparent`, not none, keeps
+   them hit-testable); the visible affordance is a thin accent trim around
+   each end cap and along the outside edge, shown while the pill is hovered. */
+.rw-pill-handle {
+  fill: transparent;
+  stroke: none;
+}
+
+.rw-pill-handle--cap {
+  cursor: col-resize;
+}
+
+.rw-pill-handle--edge {
+  fill: none;
+  stroke: transparent;
+  cursor: ns-resize;
+}
+
+.rw-pill-cap-trim,
+.rw-pill-edge-trim {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.rw-svg--editor .rw-pill:hover .rw-pill-cap-trim,
+.rw-svg--editor .rw-pill:hover .rw-pill-edge-trim {
+  opacity: 0.9;
+}
+
+.rw-pill-icon {
+  color: var(--text-muted);
+}
+
+.rw-pill-text {
+  font-family: var(--font-display);
+  font-size: var(--text-xs); /* keep in step with VALUE_FONT in radialWidgets.js */
+  font-weight: 700;
+  letter-spacing: normal;
+  fill: var(--text-primary);
+}
+
+/* Two-row pill: small muted caption above the value. */
+/* No letter-spacing on either row: Chromium mis-centres a textPath that
+   carries letter-spacing with text-anchor middle, which read as the rows
+   being out of line with each other. */
+/* NO text-transform here: Chromium positions text on a path from the
+   untransformed characters and then draws the transformed glyphs, so an
+   uppercase caption on a textPath had every letter tilted and offset
+   wrongly (Rory's 13:11 screenshot, 2026-09-21). The caption string is
+   uppercased in RadialWheel.jsx instead. */
+.rw-pill-caption {
+  font-family: var(--font-display);
+  font-size: var(--text-2xs); /* keep in step with CAPTION_FONT in radialWidgets.js */
+  font-weight: 600;
+  letter-spacing: normal;
+  fill: var(--text-muted);
+}
+
 /* ── Base donut (sits behind all wedges) ─────────────────────────────────── */
 
-/* Matches wedge fill so the segment gaps disappear. Drop shadow applied here
-   covers the whole ring at once instead of per-wedge filters compounding. */
+/* Painted in the hairline colour: the angular WEDGE_GAP between wedges shows
+   it through as the separator line. */
 .rw-base-donut {
-  fill: var(--radial-wedge);
+  fill: var(--radial-hairline);
   opacity: 1;
-  filter: url(#rw-ring-shadow);
 }
+
 
 /* Gradient stop colours are set inline on the <stop> elements in
    RadialWheel.jsx — CSS-class-driven stop-color has cross-browser quirks
@@ -136,9 +304,11 @@
 
 /* ── Outer ring wedge ─────────────────────────────────────────────────────── */
 
+/* The outer ring floats outside the plate, so it carries its own soft
+   shadow (same filter as the plate). */
 .rw-outer-ring {
   animation: rw-outer-appear 200ms ease-out both;
-  filter: url(#rw-ring-shadow);
+  filter: url(#rw-plate-shadow);
 }
 
 @keyframes rw-outer-appear {
@@ -146,9 +316,7 @@
   to   { opacity: 1; }
 }
 
-/* Outer-ring children mirror the inner ring's fill. The drop shadow comes
-   from the rw-outer-ring group filter (set on the .rw-outer-ring rule above),
-   applied once across all visible children. */
+/* Outer-ring children mirror the inner ring's fill. */
 .rw-wedge--outer .rw-wedge-path {
   fill: var(--radial-wedge);
 }
@@ -189,10 +357,11 @@
   to   { opacity: 1; }
 }
 
+/* The hub disc (.rw-hub) is the label's backdrop now, so the pill rect no
+   longer paints; it stays in the tree as the label's sizing anchor. */
 .rw-centre-pill {
-  fill: var(--bg-surface);
-  stroke: var(--border-bright);
-  stroke-width: 1;
+  fill: none;
+  stroke: none;
   transition: x 0.1s ease, y 0.1s ease, width 0.1s ease, height 0.1s ease;
 }
 

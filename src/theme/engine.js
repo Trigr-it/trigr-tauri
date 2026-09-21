@@ -39,7 +39,7 @@ export const THEME_TOKENS = [
   '--key-border', '--key-border-assigned', '--key-border-selected',
   '--btn-primary-bg', '--btn-primary-text', '--btn-primary-hover',
   '--btn-secondary-border', '--btn-secondary-text', '--btn-ghost-text',
-  '--radial-wedge',
+  '--radial-wedge', '--radial-plate', '--radial-hub', '--radial-hairline', '--radial-rim',
   // Not derived from the knobs: popup transparency (Settings > Appearance),
   // emitted as a percentage only when below 100 %.
   '--overlay-alpha',
@@ -138,6 +138,13 @@ export function deriveTokens(rawKnobs, half) {
     '--btn-ghost-text': textMuted,
 
     '--radial-wedge': panel,
+    // Layered rings: plate halfway from the panel to the window background,
+    // hub = the background itself (both one tone below the wedge in either
+    // half), hairline/rim = faint text-coloured lines like the Keyfire values.
+    '--radial-plate': mix(panel, background, 0.5),
+    '--radial-hub': background,
+    '--radial-hairline': rgba(text, light ? 0.10 : 0.09),
+    '--radial-rim': rgba(text, light ? 0.08 : 0.06),
   };
 }
 

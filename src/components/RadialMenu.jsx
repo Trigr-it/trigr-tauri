@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Aperture } from 'lucide-react';
 import RadialWheel from './RadialWheel';
+import { normaliseWidgets, resolvePills, hasLiveWidget } from './radialWidgets';
 import './RadialMenu.css';
 import { applyCached as applyCachedTheme } from '../theme/runtime';
 
@@ -16,6 +17,13 @@ export default function RadialMenu() {
   const [animKey, setAnimKey] = useState(0);
   const [missingNotice, setMissingNotice] = useState(false);
   const missingTimer = useRef(null);
+  // Widget pills (Pro): config list + machine facts arrive with each push;
+  // `now` re-ticks so a clock pill stays right while the wheel sits open,
+  // and live facts (CPU / RAM / volume / locks) are re-polled every 2 s.
+  const [widgets, setWidgets] = useState([]);
+  const [facts, setFacts] = useState(null);
+  const [profile, setProfile] = useState('');
+  const [now, setNow] = useState(() => Date.now());
 
   const itemsRef = useRef([]);
   const expandedFolderRef = useRef(null);
@@ -45,6 +53,10 @@ export default function RadialMenu() {
   const applyRadialData = useCallback((data) => {
     if (!data) return;
     setItems(data.items || []);
+    setWidgets(normaliseWidgets(data.widgets));
+    setFacts(data.facts || null);
+    setProfile(typeof data.profile === 'string' ? data.profile : '');
+    setNow(Date.now());
     setHoveredIndex(-1);
     setHoveredOuterIndex(-1);
     setExpandedFolder(null);
@@ -54,6 +66,27 @@ export default function RadialMenu() {
     holdToSelectRef.current = !!data.holdToSelect;
     holdKeyRef.current = data.holdKey || '';
   }, []);
+
+  // Clock tick for the pills. Cheap (one setState every 15 s) and only
+  // matters while the window is visible; parked windows throttle it anyway.
+  useEffect(() => {
+    if (widgets.length === 0) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, [widgets.length]);
+  const live = hasLiveWidget(widgets);
+  useEffect(() => {
+    if (!live) return undefined;
+    let cancelled = false;
+    const poll = () => {
+      window.electronAPI?.getRadialWidgetFacts?.()
+        .then((f) => { if (!cancelled && f) setFacts(f); })
+        .catch(() => {});
+    };
+    const id = setInterval(poll, 2000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [live]);
+  const pills = useMemo(() => resolvePills(widgets, facts, now, { profile }), [widgets, facts, now, profile]);
 
   // Push stamp + deferred-pull timer: see the visibilitychange handler below.
   const lastPushAtRef = useRef(0);
@@ -288,6 +321,7 @@ export default function RadialMenu() {
         key={animKey}
         mode="live"
         items={items}
+        pills={pills}
         expandedFolder={expandedFolder}
         hoveredIndex={hoveredIndex}
         hoveredOuterIndex={hoveredOuterIndex}

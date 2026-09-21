@@ -1,5 +1,60 @@
-import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
-import { Info, ChevronDown, Pencil, Trash2, Plus, Check } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
+import {
+  Info, ChevronDown, Pencil, Trash2, Plus, Check,
+  Clock, CalendarDays, CalendarRange, BatteryMedium, Cpu, MemoryStick, Volume2, Keyboard, AppWindow, Layers,
+} from 'lucide-react';
+import {
+  WIDGET_TYPES, WIDGET_GROUPS, ANGLE_PRESETS, MAX_WIDGETS, DEFAULT_ANGLE, TIME_ZONES, UTC_OFFSETS,
+  normaliseWidgets, newWidgetId, resolvePills, hasLiveWidget, normaliseTimeZone, displayTimeZone,
+  pillGeometry, pillFitsAt, freeAngle, normAngle, angleDiff, tierBases, MAX_TIER, PILL,
+} from './radialWidgets';
+
+const WIDGET_ICONS = {
+  clock: Clock, date: CalendarDays, week: CalendarRange, battery: BatteryMedium,
+  cpu: Cpu, ram: MemoryStick, volume: Volume2, locks: Keyboard, app: AppWindow, profile: Layers,
+};
+
+// Typeable time zone for extra clocks: native suggestions (datalist) over
+// the IANA list plus UTC offsets; accepts "UTC+2" / "+05:30" too. Saves the
+// canonical id only once the text resolves, so a half-typed name never lands
+// in config; invalid text is flagged and left in the field.
+function TimeZoneField({ id, value, onChange }) {
+  const [text, setText] = useState(() => displayTimeZone(value));
+  const lastValue = useRef(value);
+  useEffect(() => {
+    if (value !== lastValue.current) {
+      lastValue.current = value;
+      setText(displayTimeZone(value));
+    }
+  }, [value]);
+  const resolved = text.trim() ? normaliseTimeZone(text) : '';
+  const invalid = !!text.trim() && !resolved;
+  const commit = (t) => {
+    const next = t.trim() ? normaliseTimeZone(t) : '';
+    if (next === null) return;
+    if (next !== value) { lastValue.current = next; onChange(next); }
+  };
+  return (
+    <label className="rev-widget-field">
+      <span>Time zone</span>
+      <input
+        className={`rev-widget-select rev-widget-input${invalid ? ' is-invalid' : ''}`}
+        type="text"
+        list={id}
+        placeholder="This PC"
+        value={text}
+        spellCheck={false}
+        title={invalid ? 'Not a known time zone. Try a city (Europe/Paris) or an offset (UTC+2).' : 'City or UTC offset; leave empty for this PC'}
+        onChange={e => { setText(e.target.value); commit(e.target.value); }}
+        onBlur={e => { if (!e.target.value.trim()) commit(''); }}
+      />
+      <datalist id={id}>
+        {UTC_OFFSETS.map(z => <option key={z} value={z} />)}
+        {TIME_ZONES.map(z => <option key={z} value={z.replace(/_/g, ' ')} />)}
+      </datalist>
+    </label>
+  );
+}
 import RadialWheel, { CX, CY, MAX_SLOTS, OUTER_INNER_R, OUTER_OUTER_R, polarToXY } from './RadialWheel';
 import { friendlyKeyName } from './keyboardLayout';
 import './RadialEditorView.css';
@@ -220,8 +275,240 @@ export default function RadialEditorView({
   onDeleteRadialLayout,
   isPro                 = false,
   onShowUpgrade,
+  // Widget pills (Pro): top-level config list, see radialWidgets.js.
+  radialWidgets         = [],
+  onSetRadialWidgets,
 }) {
   const [capturingKey, setCapturingKey] = useState(false);
+
+  // ── Widget pills preview ─────────────────────────────────────────────
+  // The editor wheel shows the same pills the overlay will, resolved from
+  // the live clock and the machine facts (battery, app, volume, locks, CPU,
+  // RAM). Facts refresh every 2 s while a live widget is on, else every 30 s.
+  const widgets = useMemo(() => normaliseWidgets(radialWidgets), [radialWidgets]);
+  const [facts, setFacts] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
+  const liveWidgets = hasLiveWidget(widgets);
+  useEffect(() => {
+    if (widgets.length === 0) return undefined;
+    let cancelled = false;
+    const sample = () => {
+      window.electronAPI?.getRadialWidgetFacts?.()
+        .then((f) => { if (!cancelled && f) setFacts(f); })
+        .catch(() => {});
+    };
+    sample();
+    const id = setInterval(() => { sample(); setNow(Date.now()); }, liveWidgets ? 2000 : 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [widgets.length, liveWidgets]);
+  // Drag a pill to another slot: pointer angle around the wheel centre snaps
+  // to the nearest slot no other widget holds; the pill previews there live
+  // and the move commits on release.
+  const [pillDrag, setPillDrag] = useState(null); // { id, slot }
+  const [widgetsOpen, setWidgetsOpen] = useState(false); // drawer, session-only
+
+  // ── Fit the wheel to the zone height ─────────────────────────────────
+  // See .rev-editor in RadialEditorView.css. Measures the wheel zone and its
+  // other children (tips, layouts bar) and scales the 525px wheel to fit.
+  const zoneRef = useRef(null);
+  const [wheelScale, setWheelScale] = useState(1);
+  useEffect(() => {
+    const zone = zoneRef.current;
+    if (!zone || typeof ResizeObserver === 'undefined') return undefined;
+    const WHEEL_PX = 525;
+    const GAP_PX = 14; // .rev-wheel-zone gap
+    const measure = () => {
+      const kids = Array.from(zone.children);
+      let others = 0;
+      for (const k of kids) {
+        if (k.classList.contains('rev-editor')) continue;
+        others += k.offsetHeight;
+      }
+      const available = zone.clientHeight - others - GAP_PX * Math.max(0, kids.length - 1);
+      const next = Math.max(0.5, Math.min(1, available / WHEEL_PX));
+      setWheelScale(prev => (Math.abs(prev - next) > 0.005 ? next : prev));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(zone);
+    for (const k of zone.children) ro.observe(k);
+    return () => ro.disconnect();
+  }, [radialMenuHotkey, hiddenTips, isPro]);
+  // Drag an end cap to resize, on two axes. Along the arc (toward / away
+  // from the pill's centre) switches full <-> compact; away from / toward
+  // the WHEEL centre switches one row <-> two rows (tall). The dominant
+  // axis past a 10px threshold wins; previews live, commits on release.
+  const [pillResize, setPillResize] = useState(null); // { id, mode, width, rows, width0, rows0, start, centre, wheel }
+  const pillResizeRef = useRef(null);
+  pillResizeRef.current = pillResize;
+  const handlePillHandlePointerDown = useCallback((pill, centreVb, e, mode = 'width') => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = wheelRef?.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const k = rect.width / 420;
+    const centre = { x: rect.left + centreVb.x * k, y: rect.top + centreVb.y * k };
+    const wheel = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    const w = widgets.find(x => x.id === pill.id);
+    const width = w?.width === 'compact' ? 'compact' : 'full';
+    const rows = w?.rows === 2 ? 2 : 1;
+    setPillResize({ id: pill.id, mode, width, rows, width0: width, rows0: rows, start: { x: e.clientX, y: e.clientY }, centre, wheel });
+  }, [wheelRef, widgets]);
+  useEffect(() => {
+    if (!pillResize) return undefined;
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const onMove = (e) => {
+      const rs = pillResizeRef.current;
+      if (!rs) return;
+      const here = { x: e.clientX, y: e.clientY };
+      const along = dist(here, rs.centre) - dist(rs.start, rs.centre);   // + = away from the pill centre
+      const radial = dist(here, rs.wheel) - dist(rs.start, rs.wheel);    // + = away from the wheel
+      // Each handle drives ONE axis: caps change width only, the outside
+      // edge changes rows only; neither ever touches the other setting.
+      let width = rs.width0;
+      let rows = rs.rows0;
+      if (rs.mode === 'height') {
+        if (radial > 10) rows = 2;
+        else if (radial < -10) rows = 1;
+      } else if (Math.abs(along) > 10) {
+        width = along < 0 ? 'compact' : 'full';
+      }
+      if (width !== rs.width || rows !== rs.rows) setPillResize({ ...rs, width, rows });
+    };
+    const onUp = () => {
+      const rs = pillResizeRef.current;
+      if (rs) {
+        const current = widgets.find(w => w.id === rs.id);
+        if (current && (current.width !== rs.width || current.rows !== rs.rows)) updateWidget(rs.id, { width: rs.width, rows: rs.rows });
+      }
+      setPillResize(null);
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!pillResize, widgets]);
+  const pillDragRef = useRef(null);
+  pillDragRef.current = pillDrag;
+  const handlePillPointerDown = useCallback((pill, e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setPillDrag({ id: pill.id, angle: pill.angle, tier: pill.tier || 0 });
+  }, []);
+  useEffect(() => {
+    if (!pillDrag) return undefined;
+    const onMove = (e) => {
+      const el = wheelRef?.current;
+      const drag = pillDragRef.current;
+      if (!el || !drag) return;
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      // Snapped to 15-degree steps so pills land on tidy, repeatable spots.
+      const raw = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI; // SVG degrees
+      const angle = normAngle(Math.round(raw / 15) * 15);
+      // Clearance: the pill follows the pointer while it keeps MIN_GAP_PX
+      // from every other pill, and stops against a neighbour otherwise.
+      const me = pillsRef.current.find(p => p.id === drag.id);
+      if (!me) return;
+      // Ring from the pointer's distance to the wheel centre (viewBox units):
+      // past the outer ring's inner edge (less half the gap) = ring 1.
+      const k = rect.width / 420;
+      const dist = Math.hypot(e.clientX - cx, e.clientY - cy) / k;
+      const bases = tierBases(pillsRef.current);
+      const tier = Math.min(MAX_TIER, dist >= bases[1] - PILL.TIER_GAP / 2 ? 1 : 0);
+      const geom = pillGeometry(me, bases[tier]);
+      const others = pillsRef.current
+        .filter(p => p.id !== drag.id && (p.tier || 0) === tier)
+        .map(p => ({ angle: p.angle, geom: pillGeometry(p, bases[tier]) }));
+      if (!pillFitsAt(angle, geom, others)) return;
+      if (angleDiff(angle, drag.angle) > 0.25 || tier !== drag.tier) setPillDrag({ id: drag.id, angle, tier });
+    };
+    const onUp = () => {
+      const drag = pillDragRef.current;
+      if (drag) {
+        const current = widgets.find(w => w.id === drag.id);
+        if (current && (angleDiff(current.angle, drag.angle) > 0.25 || (current.tier || 0) !== drag.tier)) {
+          updateWidget(drag.id, { angle: Math.round(drag.angle * 10) / 10, tier: drag.tier });
+        }
+      }
+      setPillDrag(null);
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!pillDrag, widgets]);
+  const pills = useMemo(() => {
+    if (!isPro) return [];
+    let list = widgets;
+    if (pillDrag) list = list.map(w => (w.id === pillDrag.id ? { ...w, angle: pillDrag.angle, tier: pillDrag.tier } : w));
+    if (pillResize) list = list.map(w => (w.id === pillResize.id ? { ...w, width: pillResize.width, rows: pillResize.rows } : w));
+    return resolvePills(list, facts, now, { showMissing: true, profile: activeProfile });
+  }, [widgets, facts, now, isPro, pillDrag, pillResize, activeProfile]);
+  // Resolved pills with their current (possibly previewed) angles, for the
+  // drag handlers' clearance checks.
+  const pillsRef = useRef([]);
+  pillsRef.current = pills;
+  // Where a NEW pill of `type` would be seated: the preset nearest its
+  // default angle where it clears every existing pill; null = no room.
+  const seatFor = (type) => {
+    const probe = resolvePills([{ id: '__probe', type, angle: DEFAULT_ANGLE[type] ?? -90 }], facts, now, { showMissing: true, profile: activeProfile })[0];
+    const bases = tierBases(pills);
+    for (let tier = 0; tier <= MAX_TIER; tier++) {
+      const geom = pillGeometry(probe || { label: 'CPU 100%' }, bases[tier]);
+      const others = pills.filter(p => (p.tier || 0) === tier).map(p => ({ angle: p.angle, geom: pillGeometry(p, bases[tier]) }));
+      const angle = freeAngle(geom, others, DEFAULT_ANGLE[type] ?? -90);
+      if (angle != null) return { angle, tier };
+    }
+    return null;
+  };
+  // Drawer cards: one collapsible row per widget entry (plus one "off" row
+  // per unused type). Only one row's settings are open at a time.
+  const [expandedWidgetId, setExpandedWidgetId] = useState(null);
+  const roomLeft = widgets.length < MAX_WIDGETS;
+  const addWidget = (type) => {
+    if (!isPro) { onShowUpgrade?.('Radial widgets'); return; }
+    if (!roomLeft) return;
+    const seat = seatFor(type);
+    if (!seat) return;
+    const id = newWidgetId(type, widgets);
+    onSetRadialWidgets?.([...widgets, { id, type, angle: seat.angle, tier: seat.tier }]);
+    setExpandedWidgetId(id);
+  };
+  const removeWidget = (id) => {
+    onSetRadialWidgets?.(widgets.filter(w => w.id !== id));
+    if (expandedWidgetId === id) setExpandedWidgetId(null);
+  };
+  const updateWidget = (id, patch) => {
+    let next = widgets.map(w => (w.id === id ? { ...w, ...patch } : w));
+    // Anything that can change a pill's width may push neighbours apart at
+    // render time (resolvePills -> resolveOverlaps). Write those pushed
+    // angles back so the stored config matches what is on screen.
+    const reflows = ['width', 'rows', 'showIcon', 'label', 'format', 'mode', 'hour12', 'timeZone', 'angle', 'tier'];
+    if (Object.keys(patch).some(k => reflows.includes(k))) {
+      const resolved = resolvePills(next, facts, now, { showMissing: true, profile: activeProfile });
+      const byId = new Map(resolved.map(p => [p.id, p.angle]));
+      next = next.map(w => {
+        const a = byId.get(w.id);
+        return typeof a === 'number' && angleDiff(a, w.angle) > 0.05 ? { ...w, angle: a } : w;
+      });
+    }
+    onSetRadialWidgets?.(next);
+  };
   const [capturedKey, setCapturedKey]   = useState(null);
   const [radialConflict, setRadialConflict] = useState(null);
   const setExpandedFolder = onExpandedFolderChange;
@@ -663,7 +950,7 @@ export default function RadialEditorView({
           <p>Set a hotkey above to enable the radial menu.</p>
         </div>
       ) : (
-        <div className="rev-wheel-zone">
+        <div className="rev-wheel-zone" ref={zoneRef}>
           {!hiddenTips.includes('radial-info') && (
             <div className="rev-tip">
               <Info size={14} strokeWidth={2} aria-hidden="true" />
@@ -671,11 +958,28 @@ export default function RadialEditorView({
               <button type="button" className="rev-tip-close" title="Hide this tip (restore in Settings)" aria-label="Hide this tip" onClick={() => onHideTip?.('radial-info')}>&#10005;</button>
             </div>
           )}
-          <div className="rev-editor" ref={wheelRef} onClick={() => { setPopover(null); setCtxMenu(null); }}>
+          <div
+            className="rev-editor"
+            ref={wheelRef}
+            style={{
+              // Both axes: localHitTestFull maps pointer -> viewBox through
+              // this rect, so it must be the scaled square the wheel paints.
+              // RadialWheel sizes its container to the same square (viewBox
+              // scaling, no CSS transform), so the two always agree.
+              width: Math.round(525 * wheelScale),
+              height: Math.round(525 * wheelScale),
+            }}
+            onClick={() => { setPopover(null); setCtxMenu(null); }}
+          >
             <RadialWheel
               mode="editor"
               externalDnd={true}
               items={radialMenuItems}
+              scale={wheelScale}
+              pills={pills}
+              onPillPointerDown={handlePillPointerDown}
+              onPillHandlePointerDown={handlePillHandlePointerDown}
+              draggingPillId={pillDrag?.id || null}
               expandedFolder={expandedFolder}
               hoveredIndex={hoveredIndex}
               hoveredOuterIndex={hoveredOuter}
@@ -939,6 +1243,233 @@ export default function RadialEditorView({
               onShowUpgrade={onShowUpgrade}
             />
           </div>
+
+        </div>
+      )}
+
+      {/* Widget pills (Pro): a collapsible drawer on the panel's left edge,
+          i.e. sticking off the profile sidebar, with a vertical "Widgets"
+          tab. Lives in the drawer rather than under the wheel: a bar there
+          overflowed the panel on short windows and overlapped the legend. */}
+      {radialMenuHotkey && (
+        <div className={`rev-widgets-drawer${widgetsOpen ? ' is-open' : ''}`}>
+          <div className="rev-widgets-panel" aria-hidden={!widgetsOpen}>
+            <div className="rev-widgets-head">
+              <span className="rev-layouts-label">
+                Widgets
+                {!isPro && <span className="pro-badge">PRO</span>}
+              </span>
+              <span className="rev-layouts-hint">
+                {isPro
+                  ? 'Information pills around the wheel. Drag one to move it. Drag an end cap along the arc to shrink or widen it, or away from the wheel for two rows. They step aside while a folder is open.'
+                  : 'Clock, date, battery, CPU, memory and more, as pills around your wheel.'}
+              </span>
+            </div>
+            {WIDGET_GROUPS.map((group) => (
+              <div key={group.id} className="rev-widget-group">
+                <div className="rev-widget-group-title">{group.label}</div>
+                {WIDGET_TYPES.filter(m => m.group === group.id).map((meta) => {
+                  const entries = widgets.filter(w => w.type === meta.type);
+                  const Icon = WIDGET_ICONS[meta.type] || Clock;
+                  const rows = entries.length > 0 ? entries : [null];
+                  return (
+                    <React.Fragment key={meta.type}>
+                      {rows.map((entry, i) => {
+                        const on = isPro && !!entry;
+                        const rowId = entry ? entry.id : `off-${meta.type}`;
+                        const expanded = on && expandedWidgetId === rowId;
+                        const canAdd = isPro ? (roomLeft && seatFor(meta.type) != null) : true;
+                        const name = meta.multi && entries.length > 1 ? `${meta.label} ${i + 1}` : meta.label;
+                        return (
+                          <div key={rowId} className={`rev-widget-card${on ? ' is-on' : ''}${expanded ? ' is-open' : ''}`}>
+                            <div className="rev-widget-card-head">
+                              <Icon size={14} strokeWidth={2} aria-hidden="true" />
+                              {on ? (
+                                <button
+                                  type="button"
+                                  className="rev-widget-card-name rev-widget-card-expand"
+                                  aria-expanded={expanded}
+                                  onClick={() => setExpandedWidgetId(expanded ? null : rowId)}
+                                  title={expanded ? 'Hide settings' : 'Show settings'}
+                                >
+                                  <span>{name}</span>
+                                  <ChevronDown size={13} strokeWidth={2} aria-hidden="true" className="rev-widget-card-chevron" />
+                                </button>
+                              ) : (
+                                <span className="rev-widget-card-name">{name}</span>
+                              )}
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={on}
+                                aria-label={`${name} pill`}
+                                className={`rev-holdselect-toggle${on ? ' on' : ''}`}
+                                disabled={!on && !canAdd}
+                                onClick={() => (on ? removeWidget(entry.id) : addWidget(meta.type))}
+                                title={on
+                                  ? `Remove the ${name.toLowerCase()} pill`
+                                  : canAdd ? `Add a ${meta.label.toLowerCase()} pill` : 'No room left around the wheel'}
+                              />
+                            </div>
+                            {!on && meta.hint && <span className="rev-widget-card-hint">{meta.hint}</span>}
+                            {expanded && (
+                              <div className="rev-widget-card-opts">
+                                <label className="rev-widget-field">
+                                  <span>Position</span>
+                                  {(() => {
+                                    const me = pills.find(p => p.id === entry.id);
+                                    const bases = tierBases(pills);
+                                    const tier = entry.tier || 0;
+                                    const geom = pillGeometry(me || { label: 'CPU 100%' }, bases[tier]);
+                                    const others = pills
+                                      .filter(p => p.id !== entry.id && (p.tier || 0) === tier)
+                                      .map(p => ({ angle: p.angle, geom: pillGeometry(p, bases[tier]) }));
+                                    const preset = ANGLE_PRESETS.find(a => angleDiff(a.angle, entry.angle) < 0.5);
+                                    return (
+                                      <select
+                                        className="rev-widget-select"
+                                        value={preset ? preset.id : 'custom'}
+                                        onChange={e => {
+                                          const a = ANGLE_PRESETS.find(x => x.id === e.target.value);
+                                          if (a) updateWidget(entry.id, { angle: a.angle });
+                                        }}
+                                      >
+                                        {!preset && <option value="custom" disabled>Custom (dragged)</option>}
+                                        {ANGLE_PRESETS.map(a => (
+                                          <option key={a.id} value={a.id} disabled={!pillFitsAt(a.angle, geom, others)}>{a.label}</option>
+                                        ))}
+                                      </select>
+                                    );
+                                  })()}
+                                </label>
+                                <label className="rev-widget-field">
+                                  <span>Ring</span>
+                                  <select
+                                    className="rev-widget-select"
+                                    value={entry.tier === 1 ? '1' : '0'}
+                                    onChange={e => updateWidget(entry.id, { tier: e.target.value === '1' ? 1 : 0 })}
+                                  >
+                                    <option value="0">Inner (next to the wheel)</option>
+                                    <option value="1">Outer (stacked above)</option>
+                                  </select>
+                                </label>
+                                <label className="rev-widget-field">
+                                  <span>Width</span>
+                                  <select
+                                    className="rev-widget-select"
+                                    value={entry.width === 'compact' ? 'compact' : 'full'}
+                                    onChange={e => updateWidget(entry.id, { width: e.target.value })}
+                                  >
+                                    <option value="full">Full (word + value)</option>
+                                    <option value="compact">Compact (value only)</option>
+                                  </select>
+                                </label>
+                                <label className="rev-widget-field">
+                                  <span>Rows</span>
+                                  <select
+                                    className="rev-widget-select"
+                                    value={entry.rows === 2 ? '2' : '1'}
+                                    onChange={e => updateWidget(entry.id, { rows: e.target.value === '2' ? 2 : 1 })}
+                                  >
+                                    <option value="1">One row</option>
+                                    <option value="2">Two rows (caption above value)</option>
+                                  </select>
+                                </label>
+                                <label className="rev-widget-field">
+                                  <span>Icon</span>
+                                  <select
+                                    className="rev-widget-select"
+                                    value={entry.showIcon === false ? 'hidden' : 'shown'}
+                                    onChange={e => updateWidget(entry.id, { showIcon: e.target.value === 'shown' })}
+                                  >
+                                    <option value="shown">Shown</option>
+                                    <option value="hidden">Hidden</option>
+                                  </select>
+                                </label>
+                                {meta.type === 'clock' && (
+                                  <>
+                                    <label className="rev-widget-field">
+                                      <span>Format</span>
+                                      <select
+                                        className="rev-widget-select"
+                                        value={entry.hour12 ? '12' : '24'}
+                                        onChange={e => updateWidget(entry.id, { hour12: e.target.value === '12' })}
+                                      >
+                                        <option value="24">24-hour</option>
+                                        <option value="12">12-hour</option>
+                                      </select>
+                                    </label>
+                                    <TimeZoneField
+                                      id={`tz-${entry.id}`}
+                                      value={entry.timeZone || ''}
+                                      onChange={tz => updateWidget(entry.id, { timeZone: tz || undefined })}
+                                    />
+                                    <label className="rev-widget-field">
+                                      <span>Label</span>
+                                      <input
+                                        className="rev-widget-select rev-widget-input"
+                                        type="text"
+                                        maxLength={8}
+                                        placeholder="e.g. NYC"
+                                        value={entry.label || ''}
+                                        onChange={e => updateWidget(entry.id, { label: e.target.value })}
+                                      />
+                                    </label>
+                                  </>
+                                )}
+                                {meta.type === 'date' && (
+                                  <label className="rev-widget-field">
+                                    <span>Format</span>
+                                    <select
+                                      className="rev-widget-select"
+                                      value={entry.format === 'long' ? 'long' : 'short'}
+                                      onChange={e => updateWidget(entry.id, { format: e.target.value })}
+                                    >
+                                      <option value="short">Short (Mon 21 Sep)</option>
+                                      <option value="long">Long (Monday 21 September)</option>
+                                    </select>
+                                  </label>
+                                )}
+                                {meta.type === 'ram' && (
+                                  <label className="rev-widget-field">
+                                    <span>Show</span>
+                                    <select
+                                      className="rev-widget-select"
+                                      value={entry.mode === 'gb' ? 'gb' : 'pct'}
+                                      onChange={e => updateWidget(entry.id, { mode: e.target.value })}
+                                    >
+                                      <option value="pct">Percent used</option>
+                                      <option value="gb">Used / total GB</option>
+                                    </select>
+                                  </label>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {meta.multi && isPro && entries.length > 0 && roomLeft && seatFor(meta.type) != null && (
+                        <button type="button" className="rev-widget-add" onClick={() => addWidget(meta.type)}>
+                          <Plus size={12} strokeWidth={2} aria-hidden="true" />
+                          <span>Add another {meta.label.toLowerCase()}</span>
+                        </button>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="rev-widgets-tab"
+            aria-expanded={widgetsOpen}
+            onClick={() => setWidgetsOpen(o => !o)}
+            title={widgetsOpen ? 'Hide widgets' : 'Show widgets'}
+          >
+            <span>Widgets</span>
+            {!isPro && <span className="pro-badge">PRO</span>}
+          </button>
         </div>
       )}
 

@@ -294,6 +294,13 @@
      surface so wedges read as raised against the desktop; light theme is pure
      white. Hover state stays gold in both themes (gradient in RadialWheel.jsx). */
   --radial-wedge: var(--ink-700);
+  /* Layered rings (2026-09-21): plate disc behind the wedges, hub disc in
+     the centre, each one tone below the wedge; hairline = wedge separators
+     and hub edge; rim = the plate's edge highlight. */
+  --radial-plate: var(--ink-800);
+  --radial-hub: var(--ink-900);
+  --radial-hairline: rgba(255, 255, 255, 0.09);
+  --radial-rim: rgba(255, 255, 255, 0.06);
 }
 
 /* ── Light theme ──────────────────────────────────────────── */
@@ -363,6 +370,10 @@
   --accent-surface-hover: var(--gold-200);
 
   --radial-wedge: var(--white);
+  --radial-plate: var(--paper-300);
+  --radial-hub: var(--paper-200);
+  --radial-hairline: rgba(0, 0, 0, 0.10);
+  --radial-rim: rgba(0, 0, 0, 0.08);
 }
 
 /* Windows high-contrast mode: opt out of Chromium's forced palette (it paints
