@@ -18,13 +18,15 @@ use tauri::{Emitter, Listener, Manager};
 /// minute after 5 min, and the shared renderer would drop to background CPU
 /// priority whenever every window is hidden, i.e. most of the time.
 ///
-/// `--in-process-gpu` (RAM wave 2, 2026-09-04): runs the Chromium GPU service
-/// on a thread inside the browser process instead of a separate gpu-process.
-/// Measured on the dev build: browser + GPU went from 48 + 108 MB to 102 MB
-/// private (-54 MB) with identical rendering of every window (transparent
-/// overlays included). Same mode Android WebView uses. Trade-off: a GPU
-/// driver crash now takes the browser process down with it instead of a
-/// silently restarted gpu-process; watch `[MEM]`/ProcessFailed reports.
+/// `--in-process-gpu` was shipped in v0.8.13 (RAM wave 2, 2026-09-04: GPU
+/// service on a browser-process thread, -54 MB) and REMOVED in v0.8.15
+/// (2026-09-21): a new user on 0.8.14 reported the embedded Featurebase
+/// feedback form (cross-site iframe + rich-text editor composited over the
+/// blur-heavy main window) typing at "2 fps". Nothing in Keyfire runs per
+/// keystroke there, so the starved in-process GPU thread is the prime suspect
+/// and the flag is not worth the RAM. Do not re-add it without an A/B on
+/// that form. The stock separate gpu-process also survives a GPU driver
+/// crash on its own.
 /// `--enable-features=NetworkServiceInProcess2`: folds the network utility
 /// process into the browser (-10 MB net). Keyfire's own HTTP (telemetry,
 /// updater) is Rust reqwest, so the Chromium network service only serves the
@@ -32,7 +34,7 @@ use tauri::{Emitter, Listener, Manager};
 ///
 /// The `--disable-features` list is wry's default and must be kept.
 pub const WEBVIEW_BROWSER_ARGS: &str =
-    "--process-per-site --disable-background-timer-throttling --disable-renderer-backgrounding --in-process-gpu --enable-features=NetworkServiceInProcess2 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
+    "--process-per-site --disable-background-timer-throttling --disable-renderer-backgrounding --enable-features=NetworkServiceInProcess2 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
 
 // Platform seam: the 10 engine modules below are Win32-bound. On Windows the
 // real modules compile; everywhere else the compiler swaps in no-op twins from

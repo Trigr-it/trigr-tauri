@@ -23,7 +23,7 @@
         "decorations": false,
         "visible": false,
         "backgroundColor": "#0d0d11",
-        "additionalBrowserArgs": "--process-per-site --disable-background-timer-throttling --disable-renderer-backgrounding --in-process-gpu --enable-features=NetworkServiceInProcess2 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
+        "additionalBrowserArgs": "--process-per-site --disable-background-timer-throttling --disable-renderer-backgrounding --enable-features=NetworkServiceInProcess2 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
       }
     ],
     "security": {
