@@ -187,6 +187,15 @@ export default function OnboardingTour({
           && y >= rect.top && y <= rect.top + rect.height;
     };
     const guard = (e) => {
+      // Anything the tour itself renders (tooltip card, centred step modal,
+      // Next / Skip, step dots) is always clickable. The old check only knew
+      // the step-2 tooltip via tooltipRef; on the Profiles step (displayed
+      // "Step 7") the target is the sidebar and the copy sits in a centred
+      // .onboarding-modal OUTSIDE that rect, so Next and Skip were swallowed
+      // here and the tour could not be advanced or left (user report
+      // 2026-09-21). Steps 9-11 only worked because their secondary panel
+      // rect happened to sit under the modal.
+      if (e.target?.closest?.('.onboarding-overlay')) return;
       if (tooltipRef.current?.contains(e.target)) return;
       // Modals that open ON TOP of a step (e.g. the reserved-shortcut warning
       // when the user picks Ctrl+C in step 2b) must stay clickable, or the
@@ -204,6 +213,25 @@ export default function OnboardingTour({
       document.removeEventListener('click', guard, true);
     };
   }, [targetRect, secondaryRect]);
+
+  // ── No right-click menus while the tour runs ───────────────
+  // The highlighted target (e.g. the profile sidebar) stays interactive, so
+  // a right-click there opened the profile menu and, from it, the Link to App
+  // picker: a .modal-overlay at z-index 2050 that renders UNDER the tour's
+  // z-index 10000 backdrop, darkened and blurred, with the tour still on top
+  // (user report 2026-09-21). Every in-app context menu opens something the
+  // tour was not designed to host, so swallow the event at capture for the
+  // whole tour; React's onContextMenu handlers never run. Native text-field
+  // menus are lost for the tour's duration too, which is acceptable.
+  useEffect(() => {
+    const block = (e) => {
+      if (e.target?.closest?.('.onboarding-overlay')) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    document.addEventListener('contextmenu', block, true);
+    return () => document.removeEventListener('contextmenu', block, true);
+  }, []);
 
   // ── Step-specific target selectors ──────────────────────────
   useEffect(() => {
@@ -796,7 +824,7 @@ export default function OnboardingTour({
             The <strong>Radial Menu</strong> is a wheel of actions that pops up wherever your mouse is when you trigger it. Click a wedge (or press its number) to fire it. Prefer hover-and-release? Turn on hold-to-select in the Radial panel.
           </p>
           <p className="onboarding-hint">
-            8 inner segments per wheel. <strong>Right-click an empty segment</strong> to make it a folder — folders open an outer ring of 8 more actions. Fill every segment with folders and you get up to <strong>64 actions</strong> in one wheel.
+            8 inner segments per wheel. After the tour, <strong>right-click an empty segment</strong> to make it a folder — folders open an outer ring of 8 more actions. Fill every segment with folders and you get up to <strong>64 actions</strong> in one wheel.
           </p>
           <p className="onboarding-hint">
             <strong>Drag and drop</strong> existing actions from your profile onto segments, or click a segment to <strong>create a new action just for the wheel</strong> using the standard editor. Set the hotkey that triggers the wheel in this panel's top-right.
