@@ -1993,6 +1993,36 @@
   <p>Every machine that shares your config sees the same <strong>Default</strong> wheel. With Pro you can add extra layouts and choose which one each machine fires. Use the <strong>Active Radial</strong> selector under the wheel in the Radial tab: pick a layout and that is the one this machine opens on the hotkey and the one you are editing. The layouts themselves sync with your config, so you can build a laptop wheel at your desk. Only the choice of active layout stays local to each device.</p>
   <p>Layouts share the same underlying actions. Rearranging wedges on one layout never changes what the action does, and renaming or deleting a profile updates every layout at once.</p>
 
+  <h2>Widgets around the wheel <span class="pro-pill">PRO</span></h2>
+  <p>Widgets are small information pills that sit around the rim of the wheel while it is open: the time, the date, how your PC is doing, and what you are working in. They are read-only and never get in the way of the wedges. Open the <strong>Widgets</strong> drawer on the right edge of the Radial tab and switch on the ones you want.</p>
+  <div class="callout info">
+    <div class="ct">Early preview</div>
+    <p>Widgets shipped in v0.8.15 as a first version. The look of the pills and the set of widgets will keep changing over the next releases. If something reads badly on your screen, or there is a widget you want, send it through the feedback button.</p>
+  </div>
+  <table>
+    <tr><th>Widget</th><th>Shows</th></tr>
+    <tr><td><strong>Clock</strong></td><td>The time, 24-hour or 12-hour. Add more than one clock and give each a time zone and a short label, for example NYC or Tokyo. The time zone field accepts a city, a region, UTC, or an offset such as +05:30.</td></tr>
+    <tr><td><strong>Date</strong></td><td>Today's date, short (21 Sep) or long (Mon 21 Sep).</td></tr>
+    <tr><td><strong>Week number</strong></td><td>The ISO week of the year.</td></tr>
+    <tr><td><strong>CPU</strong></td><td>Processor load, refreshed every two seconds while the wheel is open.</td></tr>
+    <tr><td><strong>Memory</strong></td><td>Memory in use, as a percentage or as GB used of GB total.</td></tr>
+    <tr><td><strong>Battery</strong></td><td>Charge level, with a charging state. Only on machines with a battery.</td></tr>
+    <tr><td><strong>Volume</strong></td><td>The master volume, refreshed live.</td></tr>
+    <tr><td><strong>Lock keys</strong></td><td>Whether Caps Lock and Num Lock are on.</td></tr>
+    <tr><td><strong>Active app</strong></td><td>The app the wheel opened over.</td></tr>
+    <tr><td><strong>Profile</strong></td><td>The profile whose wheel is showing.</td></tr>
+  </table>
+
+  <h3>Placing and sizing</h3>
+  <div class="step-row"><div class="step-num">1</div><div class="step-text"><strong>Move</strong>: drag a pill around the rim. It snaps to 15 degree steps and steps aside from its neighbours, so two pills never overlap. You can also pick a position from the pill's card in the drawer.</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-text"><strong>Width</strong>: drag either end cap along the arc. Pulling inwards switches to the compact pill (value only, no word), pulling outwards restores the full pill.</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-text"><strong>Rows</strong>: drag the outer edge away from the wheel for a two-row pill with a small caption above the value, or back towards the wheel for one row.</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-text"><strong>Rings</strong>: each pill sits on the inner ring next to the wheel or on the outer ring above it. Drag a pill across the faint bands that appear while you drag, or set <strong>Ring</strong> in its card. Two rings fit up to twelve pills.</div></div>
+  <p>Each pill's card also lets you hide its icon. Widgets are stored with your config, so they appear on every device that shares it, and they hide while a folder's outer ring is open so the wheel never gets crowded. On the Free plan the drawer shows what is available and the wheel stays as it is.</p>
+
+  <h2>Empty wheel in an app profile</h2>
+  <p>If the wheel for an app-specific profile has no segments, Keyfire shows the global profile's wheel instead, so the hotkey always opens something useful. As soon as you add a segment to the app profile's own wheel, that wheel takes over. The editor notes which wheel will show under the hold-to-select toggle.</p>
+
   <h2>Behaviour over fullscreen apps</h2>
   <p>Radial menus open over borderless fullscreen apps and most games. Firing an action sends input to whichever window had focus before the menu opened. Exclusive fullscreen apps (some DirectX games) may resist focus restoration. Borderless windowed mode is the reliable mode for gaming use.</p>
 
@@ -2627,7 +2657,7 @@
   <div class="section-title">Licence</div>
   <div class="section-subtitle">Activate Pro features with a licence key.</div>
 
-  <p>Keyfire is free to use with all core features included. A Pro licence unlocks additional capabilities including formulas, hold triggers, multiple variants per expansion, image expansions, global variables, auto-switching app profiles, per-device radial layouts, extended clipboard retention, and detailed analytics.</p>
+  <p>Keyfire is free to use with all core features included. A Pro licence unlocks additional capabilities including formulas, hold triggers, multiple variants per expansion, image expansions, global variables, auto-switching app profiles, per-device radial layouts, radial widgets, custom theme colours, extended clipboard retention, and detailed analytics.</p>
 
   <h2>The 14-day Pro trial</h2>
   <p>Every new install starts with Pro switched on for 14 days. There is nothing to opt into and no card to enter: the trial begins the first time Keyfire runs, and the announcement you see after the tour is telling you it is already live. <strong>Settings → Licence</strong> shows the days remaining.</p>
@@ -2656,6 +2686,7 @@
     <tr><td>Profile auto-switch on app focus</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
     <tr><td>Ready-made app profiles (Templates)</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
     <tr><td>Radial layouts per device</td><td>Default wheel only</td><td>Any number</td></tr>
+    <tr><td>Radial widgets (clock, date, CPU, battery and more)</td><td style="color:var(--text-dim)">Not included</td><td>Up to 12 pills, two rings</td></tr>
     <tr><td>Hold trigger</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
     <tr><td>Formulas (<code>{=expr}</code>, <code>{if}…{endif}</code>)</td><td style="color:var(--text-dim)">Not included</td><td>Yes</td></tr>
     <tr><td>Multiple variants per expansion</td><td>First only</td><td>All</td></tr>
