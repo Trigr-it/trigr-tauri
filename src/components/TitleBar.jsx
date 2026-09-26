@@ -12,7 +12,13 @@ const AREA_TABS = [
   { key: 'analytics',  label: 'Analytics' },
 ];
 
-export default function TitleBar({
+const THEME_OPTIONS = [
+  { value: 'auto',  label: 'Follow System', Icon: Monitor },
+  { value: 'light', label: 'Light',         Icon: Sun },
+  { value: 'dark',  label: 'Dark',          Icon: Moon },
+];
+
+function TitleBar({
   macrosEnabled,
   onToggleMacros,
   // theme is the user's chosen mode: 'auto' | 'light' | 'dark'.
@@ -64,11 +70,6 @@ export default function TitleBar({
 
   const themeIcon = theme === 'auto' ? Monitor : (theme === 'light' ? Sun : Moon);
   const ThemeIconComponent = themeIcon;
-  const themeOptions = [
-    { value: 'auto',  label: 'Follow System', Icon: Monitor },
-    { value: 'light', label: 'Light',         Icon: Sun },
-    { value: 'dark',  label: 'Dark',          Icon: Moon },
-  ];
 
   // Templates dropdown
   const [templatesDismissed, setTemplatesDismissed] = useState(() => {
@@ -372,7 +373,7 @@ export default function TitleBar({
           </button>
           {themePickerOpen && (
             <div className="theme-picker-popover" role="menu">
-              {themeOptions.map(opt => {
+              {THEME_OPTIONS.map(opt => {
                 const Icon = opt.Icon;
                 const selected = theme === opt.value;
                 return (
@@ -440,3 +441,5 @@ export default function TitleBar({
     </div>
   );
 }
+
+export default React.memo(TitleBar);

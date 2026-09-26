@@ -688,7 +688,7 @@ function DraggableCardWrap({ id, storageKey, isUsed, enabled, kind = 'library-ca
 
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
-export default function Sidebar({
+function Sidebar({
   activeProfile,
   assignments,
   currentCombo,
@@ -741,7 +741,7 @@ export default function Sidebar({
   isPro = false,
   onShowUpgrade,
 }) {
-  const profileEntries = (() => {
+  const profileEntries = useMemo(() => {
     const entries = [];
     const seen = new Set();
     // First pass: collect single-press entries
@@ -805,7 +805,7 @@ export default function Sidebar({
       });
     }
     return entries;
-  })();
+  }, [assignments, activeProfile]);
 
   // ── Unassigned library entries ("{Profile}::UNASSIGNED::{uuid}") ──────
   // Grouped by uuid; the displayed macro prefers the base entry, falling back
@@ -1827,3 +1827,5 @@ export default function Sidebar({
     </aside>
   );
 }
+
+export default React.memo(Sidebar);

@@ -18,9 +18,6 @@ import { listen, emit } from '@tauri-apps/api/event';
 import { THEME_TOKENS } from './engine.js';
 
 const SNAPSHOT_KEY = 'trigr_theme_snapshot';
-// Legacy per-overlay cache from before the runtime existed. Still written
-// (half only) for one release so nothing reading it regresses mid-update.
-const LEGACY_KEY = 'trigr_overlay_theme';
 export const THEME_EVENT = 'theme-changed';
 
 function normaliseSnapshot(snap) {
@@ -47,7 +44,6 @@ export function applySnapshot(rawSnap) {
   // is never on for opaque popups).
   if (snap.tokens && snap.tokens['--overlay-alpha']) root.setAttribute('data-translucent', '1');
   else root.removeAttribute('data-translucent');
-  try { localStorage.setItem(LEGACY_KEY, snap.half); } catch { /* storage unavailable */ }
 }
 
 export function readCached() {

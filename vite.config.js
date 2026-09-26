@@ -19,4 +19,8 @@ export default defineConfig({
     sourcemap: !!process.env.TAURI_DEBUG,
     outDir: 'build',
   },
+  // Drop console.* and debugger from production builds only. Dev keeps them
+  // for `cargo tauri dev` diagnostics. The dev bridge (Claude Test) still
+  // works because its own logs are behind import.meta.env.DEV guards.
+  esbuild: !process.env.TAURI_DEBUG ? { drop: ['console', 'debugger'] } : {},
 });

@@ -30,6 +30,11 @@ const AnalyticsPanel = lazy(() => import('./components/AnalyticsPanel'));
 const ClipboardPanel = lazy(() => import('./components/ClipboardPanel'));
 const SearchTemplatesPanel = lazy(() => import('./components/SearchTemplatesPanel'));
 const RadialEditorView = lazy(() => import('./components/RadialEditorView'));
+
+// Stable Suspense fallback for the lazy inner panels. A blank fallback flashed
+// while the chunk loaded (~50-200 ms first-open); this shows a subtle
+// "Loading…" only after a 120 ms delay so instant loads still show nothing.
+const LAZY_PANEL_FALLBACK = <div className="lazy-panel-fallback" aria-hidden="true" />;
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay, pointerWithin } from '@dnd-kit/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen as listenEvent, emit as emitEvent } from '@tauri-apps/api/event';
@@ -6979,12 +6984,15 @@ function App() {
             <QuickTips onDismiss={handleDismissTips} searchOverlayHotkey={searchOverlayHotkey} searchOverlayEnabled={searchOverlayEnabled} />
           )}
           {activeArea === 'analytics' && (
-            <Suspense fallback={null}>
-              <AnalyticsPanel isPro={isPro} onShowUpgrade={showUpgrade} />
-            </Suspense>
+            <div className="area-fade">
+              <Suspense fallback={LAZY_PANEL_FALLBACK}>
+                <AnalyticsPanel isPro={isPro} onShowUpgrade={showUpgrade} />
+              </Suspense>
+            </div>
           )}
           {activeArea === 'clipboard' && (
-            <Suspense fallback={null}>
+            <div className="area-fade">
+            <Suspense fallback={LAZY_PANEL_FALLBACK}>
             <ClipboardPanel
               hiddenTips={hiddenTips}
               onHideTip={handleHideTip}
@@ -7006,9 +7014,11 @@ function App() {
               onShowUpgrade={showUpgrade}
             />
             </Suspense>
+            </div>
           )}
           {activeArea === 'templates' && (
-            <Suspense fallback={null}>
+            <div className="area-fade">
+            <Suspense fallback={LAZY_PANEL_FALLBACK}>
             <SearchTemplatesPanel
               hiddenTips={hiddenTips}
               onHideTip={handleHideTip}
@@ -7050,11 +7060,13 @@ function App() {
               onEditingChange={setQuickActionEditing}
             />
             </Suspense>
+            </div>
           )}
           {activeArea === 'expansions' && (
             // Phase 3: Text Expansions will eventually support its own profile bar
             // for per-app or team expansion profiles.  For now a single global set.
-            <Suspense fallback={null}>
+            <div className="area-fade">
+            <Suspense fallback={LAZY_PANEL_FALLBACK}>
             <TextExpansions
               hiddenTips={hiddenTips}
               onHideTip={handleHideTip}
@@ -7106,6 +7118,7 @@ function App() {
               onEditingChange={setExpansionEditing}
             />
             </Suspense>
+            </div>
           )}
         </main>
         )}
